@@ -44,6 +44,7 @@ mongoose.set("useCreateIndex", true);//To handle deprecation warning from Mongoo
 const userSchema = new mongoose.Schema({
     email: String,
     password: String,
+    secret: String,
     googleId: String,
     githubId: String
 });
@@ -172,13 +173,46 @@ app.get('/register', (req, res) => {
 });
 
 app.get('/secrets', (req, res) => {
-    //"isAuthenticated()" from the Passport library and it returns "true" is the user is already authenticated
-    if (req.isAuthenticated()){
-      res.render("secrets");
-    } else {
-      res.redirect("/login");
+    // On this page all signed in users will see all secrets, posted anonymously.
+    //We must find only users, that have property "secret" with any value (not NULL).
+    User.find({secret: {$ne: null}}, function(err, foundUsers){
+    //"$ne" is a MongoDB comparison operator which matches all values that are not equal to a specified value.
+      if (err) console.log(err);
+      else {
+        if (foundUsers) {
+          res.render('secrets', {usersWithSecrets: foundUsers});
+        }
+      }
+    })
+  });
+
+app.get('/submit', (req, res) => {
+  //"isAuthenticated()" from the Passport library and it returns "true" is the user is already authenticated
+  if (req.isAuthenticated()){
+    res.render('submit');
+  } else {
+    res.redirect('/login');
+  }
+})
+
+app.post('/submit', (req, res) => {
+  const submittedSecret = req.body.secret;
+  //"Passport" saves details about currently logged in user in the "req" variable. To get access to the data
+  //that saved in the current session we can use "req.user". "user" is an object with 3 fields: "_id", "username"
+  //and "__v". These properties come from the Users collection. Now, as we have a user ID, we can add to the realted 
+  //to him document in the collection the "secret", that he submits. That's why we need to add a new field to the "userSchema".
+  User.findById(req.user._id, function(err, foundUser){
+    if (err) console.log(err)
+    else {
+      if (foundUser) {
+        foundUser.secret = submittedSecret;//One user in that case may have only one secret, for simplicity
+        foundUser.save(function(){
+          res.redirect('/secrets');
+        });
+      }
     }
   });
+})
 
 app.get('/logout', (req, res) => {
     req.logout();//"logout()" from the Passport library and it allows to deauthenticate the User
